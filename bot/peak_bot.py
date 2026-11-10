@@ -15,6 +15,7 @@ import os
 import random
 import re
 import sqlite3
+import sys
 import time
 from collections import defaultdict, deque
 from datetime import datetime, timedelta, timezone
@@ -26,11 +27,29 @@ from dotenv import load_dotenv
 from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 load_dotenv()
+# Render buffers Python output: without this the Logs tab stays empty and errors are invisible.
+try:
+    sys.stdout.reconfigure(line_buffering=True)
+    sys.stderr.reconfigure(line_buffering=True)
+except Exception:  # noqa: BLE001
+    pass
 SITE_URL = os.environ.get("SITE_URL", "").strip().rstrip("/")
 SYNC_KEY = os.environ.get("SYNC_KEY", "").strip()
 if not SITE_URL or not SYNC_KEY:
     # Stay alive without touching Discord, so the host does not restart the bot in a loop.
     print("SITE_URL and SYNC_KEY are missing. Copy both from the website admin panel into the bot's Environment, then restart.")
+    # Still answer Render's health check on PORT (Web Service), so Render does not kill it in a loop.
+    if os.environ.get("PORT"):
+        import http.server
+        import socketserver
+
+        class _H(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                self.send_response(200); self.end_headers(); self.wfile.write(b"PEAK bot: missing SITE_URL / SYNC_KEY")
+            def do_HEAD(self):
+                self.send_response(200); self.end_headers()
+
+        socketserver.TCPServer(("0.0.0.0", int(os.environ["PORT"])), _H).serve_forever()
     while True:
         time.sleep(3600)
 SYNC_EVERY = max(15, int(os.environ.get("SYNC_SECONDS", "30")))
@@ -916,6 +935,7 @@ async def on_ready():
         except discord.HTTPException as e:
             print("slash sync failed:", e)
     print(f"PEAK online as {client.user} in {len(client.guilds)} servers")
+    print(f"Reporting to {SITE_URL} (admin panel turns green within a minute)")
 
 
 async def fetch_site_config() -> dict:
